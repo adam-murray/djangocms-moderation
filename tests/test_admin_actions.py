@@ -1111,7 +1111,10 @@ class DeletedSelectedTransactionTest(TransactionTestCase):
         self.client.force_login(self.user)
 
         # Generate url and POST data
-        self.url = reverse("admin:djangocms_moderation_moderationrequesttreenode_changelist")
+        # url variable required for
+        self.url = url = reverse(
+            "admin:djangocms_moderation_moderationrequesttreenode_changelist"
+        )
         self.url += "?moderation_request__collection__id={}".format(self.collection.pk)
         self.data = get_url_data(self, "delete_selected")
 
@@ -1151,3 +1154,52 @@ class DeletedSelectedTransactionTest(TransactionTestCase):
         # The db transaction should have rolled back.
         self.assertEqual(ModerationRequestTreeNode.objects.all().count(), 3)
         self.assertEqual(ModerationRequest.objects.all().count(), 2)
+
+
+class CopySelectedTest(CMSTestCase):
+    def setUp(self):
+        # Create db data
+        self.user = factories.UserFactory(is_staff=True, is_superuser=True)
+        self.collection = factories.ModerationCollectionFactory(
+            author=self.user, status=constants.IN_REVIEW)
+        self.moderation_request1 = factories.ModerationRequestFactory(
+            collection=self.collection)
+        self.moderation_request2 = factories.ModerationRequestFactory(
+            collection=self.collection)
+        self.root1 = factories.RootModerationRequestTreeNodeFactory(
+            moderation_request=self.moderation_request1)
+        self.root2 = factories.RootModerationRequestTreeNodeFactory(
+            moderation_request=self.moderation_request2)
+        factories.ChildModerationRequestTreeNodeFactory(
+            moderation_request=self.moderation_request1, parent=self.root1)
+
+        url = reverse("admin:djangocms_moderation_moderationrequesttreenode_copy")
+        self.url = url + "?collection__id={collection_id}&?moderation_request__id={mr_id}".format(
+            collection_id=self.collection.pk,
+            mr_id=self.moderation_request1.pk,
+        )
+
+
+    def test_copies_to_all(self):
+        # Login as a user who is not the collection author
+        self.client.force_login(self.get_superuser())
+        # Choose the delete_selected action from the dropdown
+        view_redirect = self.client.post(self.url)
+        import pdb
+        pdb.set_trace()
+        view_response = self.client.get(view_redirect.url)
+
+        """
+        self.client.force_login(self.user)
+        queryset = ModerationRequest.objects.filter(collection=self.collection).first()
+        request = self.client.post()
+        copy_content_expiry(ModerationRequestTreeAdmin, request, queryset)
+
+        response = self.client.get(self.url)
+
+        # The action is not on the page as available to somebody who is not
+        # the author, therefore django will just return 200 as you're
+        # trying to choose an action that isn't in the dropdown
+        # (if anything had been deleted it would have been a 302)
+        self.assertEqual(response.status_code, 200)
+        """

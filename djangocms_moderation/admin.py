@@ -152,12 +152,18 @@ class ModerationRequestTreeAdmin(TreeAdmin):
         info = self.model._meta.app_label, self.model._meta.model_name
 
         return [
-            url(
-                r'^delete_selected/',
-                self.admin_site.admin_view(self.delete_selected_view),
-                name='{}_{}_delete'.format(*info),
-            ),
-        ] + super().get_urls()
+                   url(
+                       r'^delete_selected/',
+                       self.admin_site.admin_view(self.delete_selected_view),
+                       name='{}_{}_delete'.format(*info),
+                   ),
+                   url(
+                       r'^copy/',
+                       self.admin_site.admin_view(self.copy_content_expiry_view),
+                       name="{}_{}_copy".format(*info),
+                   ),
+               ] + super().get_urls()
+
 
     def get_list_display(self, request):
         additional_fields = self._get_configured_fields(request)
@@ -315,7 +321,7 @@ class ModerationRequestTreeAdmin(TreeAdmin):
             return {}
 
         actions = super().get_actions(request)
-        actions_to_keep = []
+        actions_to_keep = ["copy_content_expiry", ]
 
         if collection.status in [constants.IN_REVIEW, constants.ARCHIVED]:
             # Keep track how many actions we've added in the below loop (_actions_kept).
@@ -461,6 +467,43 @@ class ModerationRequestTreeAdmin(TreeAdmin):
             post_bulk_actions(collection)
 
         return HttpResponseRedirect(redirect_url)
+
+
+    def copy_content_expiry_view(self, request):
+        collection_id = request.GET.getlist("collection__id")
+        moderation_request_id = request.GET.getlist("moderation_request__id")
+
+        if collection_id and moderation_request_id:
+            collection = ModerationCollection.objects.get(id=collection_id)
+            moderation_request = ModerationRequestTreeNode.objects.get(id=moderation_request_id).moderation_request
+            version = moderation_request.version
+
+            redirect_url = reverse('admin:djangocms_moderation_moderationrequesttreenode_changelist')
+            redirect_url = "{}?moderation_request__collection__id={}".format(
+                redirect_url,
+                collection_id
+            )
+
+            if hasattr(version, "contentexpiry"):
+                content_expiry = version.contentexpiry
+
+                for mr in collection.moderation_requests.all():
+                    mr_version = mr.version
+                    if hasattr(mr_version, "contentexpiry"):
+                        mr_content_expiry = mr_version.contentexpiry
+                        mr_content_expiry.expires = content_expiry.expires
+                    else:
+                        from djangocms_content_expiry.models import ContentExpiry
+
+                        ContentExpiry.objects.create(
+                            created_by=request.user,
+                            version=mr_version,
+                            expires=content_expiry.expires,
+                        )
+            return HttpResponseRedirect(redirect_url)
+
+
+
 
 
 class ModerationRequestAdmin(admin.ModelAdmin):
